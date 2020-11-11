@@ -18,6 +18,7 @@
 # include "libxsmm_perf.h"
 #endif
 #include "generator_common.h"
+#include "libxsmm_plugins.h"
 
 #if defined(LIBXSMM_OFFLOAD_TARGET)
 # pragma offload_attribute(push,target(LIBXSMM_OFFLOAD_TARGET))
@@ -1208,6 +1209,9 @@ LIBXSMM_API LIBXSMM_ATTRIBUTE_CTOR void libxsmm_init(void)
           }
         }
       }
+      /* initialize the plugin discovery mechanism */
+      libxsmm_plugins_init();
+
       assert(1 == LIBXSMM_ATOMIC_LOAD(&libxsmm_ninit, LIBXSMM_ATOMIC_SEQ_CST)); /* !LIBXSMM_ASSERT */
       /* coverity[check_return] */
       LIBXSMM_ATOMIC_ADD_FETCH(&libxsmm_ninit, 1, LIBXSMM_ATOMIC_SEQ_CST);
@@ -3462,9 +3466,18 @@ LIBXSMM_API libxsmm_dmmfunction_reducebatch_offs libxsmm_dmmdispatch_reducebatch
 }
 
 
-LIBXSMM_API libxsmm_smmfunction_reducebatch_offs libxsmm_smmdispatch_reducebatch_offs_unroll(libxsmm_blasint m, libxsmm_blasint n, libxsmm_blasint k, libxsmm_blasint unroll_hint,
-  const libxsmm_blasint* lda, const libxsmm_blasint* ldb, const libxsmm_blasint* ldc,
-  const float* alpha, const float* beta, const int* flags, const int* prefetch)
+LIBXSMM_API libxsmm_smmfunction_reducebatch_offs libxsmm_smmdispatch_reducebatch_offs_unroll(
+    libxsmm_blasint m, 
+    libxsmm_blasint n, 
+    libxsmm_blasint k, 
+    libxsmm_blasint unroll_hint,
+    const libxsmm_blasint* lda, 
+    const libxsmm_blasint* ldb, 
+    const libxsmm_blasint* ldc,
+    const float* alpha, 
+    const float* beta, 
+    const int* flags, 
+    const int* prefetch)
 {
   const int gemm_flags = (NULL == flags ? LIBXSMM_FLAGS : *flags);
   libxsmm_descriptor_blob blob;
