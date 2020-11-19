@@ -29,10 +29,14 @@
 #if defined(LIBXSMM_OFFLOAD_TARGET)
 # pragma offload_attribute(push,target(LIBXSMM_OFFLOAD_TARGET))
 #endif
+#include "../src/generator_aarch64_instructions.c"
 #include "../src/generator_common.c"
 #include "../src/generator_gemm.c"
+#include "../src/generator_gemm_aarch64.c"
 #include "../src/generator_gemm_amx.c"
+#include "../src/generator_gemm_amx_emu.c"
 #include "../src/generator_gemm_amx_microkernel.c"
+#include "../src/generator_gemm_amx_microkernel_emu.c"
 #include "../src/generator_gemm_avx2_microkernel.c"
 #include "../src/generator_gemm_avx512_microkernel.c"
 #include "../src/generator_gemm_avx_microkernel.c"
@@ -44,6 +48,7 @@
 #include "../src/generator_matcopy_avx_avx512.c"
 #include "../src/generator_mateltwise.c"
 #include "../src/generator_mateltwise_avx_avx512.c"
+#include "../src/generator_mateltwise_transform_avx_avx512.c"
 #include "../src/generator_packed.c"
 #include "../src/generator_packed_gemm_ac_rm_avx_avx2_avx512.c"
 #include "../src/generator_packed_gemm_avx_avx512.c"
