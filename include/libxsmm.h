@@ -123,9 +123,12 @@ LIBXSMM_API int libxsmm_get_registry_info(libxsmm_registry_info* info);
  * Registered data is released at program termination but can be also released
  * if needed (libxsmm_xrelease), .e.g., for larger value for the same key.
  */
-LIBXSMM_API void* libxsmm_xregister(const void* key, size_t key_size, size_t value_size, const void* value_init);
+LIBXSMM_API void* libxsmm_xregister(const void* key, size_t key_size,
+  size_t value_size, const void* value_init, unsigned int* key_hash);
 /** Query user-defined value from LIBXSMM's code registry. */
-LIBXSMM_API void* libxsmm_xdispatch(const void* key, size_t key_size);
+LIBXSMM_API void* libxsmm_xdispatch(const void* key, size_t key_size,
+  /** Optionally returns the hashed key. */
+  unsigned int* key_hash);
 /** Remove key-value pair from code registry and release memory. */
 LIBXSMM_API void libxsmm_xrelease(const void* key, size_t key_size);
 
@@ -491,6 +494,7 @@ LIBXSMM_API libxsmm_meltwfunction_reduce_cols_idx libxsmm_dispatch_meltw_reduce_
 LIBXSMM_API libxsmm_meltwfunction_opreduce_vecs_idx libxsmm_dispatch_meltw_opreduce_vecs_idx(libxsmm_blasint m, const libxsmm_blasint* ldi, const libxsmm_blasint* ldo, libxsmm_datatype in_type, libxsmm_datatype out_type, libxsmm_datatype idx_type, libxsmm_meltw_opreduce_vecs_flags flags);
 LIBXSMM_API libxsmm_meltwfunction_scale libxsmm_dispatch_meltw_scale(libxsmm_blasint m, libxsmm_blasint n, const libxsmm_blasint* ldi, const libxsmm_blasint* ldo, libxsmm_datatype in_type, libxsmm_datatype out_type, libxsmm_meltw_scal_flags flags, unsigned char);
 LIBXSMM_API libxsmm_meltwfunction_transform libxsmm_dispatch_meltw_transform(libxsmm_blasint m, libxsmm_blasint n, const libxsmm_blasint* ldi, const libxsmm_blasint* ldo, libxsmm_datatype in_type, libxsmm_datatype out_type, libxsmm_meltw_transform_flags flags);
+LIBXSMM_API libxsmm_meltwfunction_dropout libxsmm_dispatch_meltw_dropout(libxsmm_blasint m, libxsmm_blasint n, const libxsmm_blasint* ldi, const libxsmm_blasint* ldo, libxsmm_datatype in_type, libxsmm_datatype out_type, libxsmm_meltw_dropout_flags flags);
 
 /** Code generation routine for transposes using a descriptor */
 LIBXSMM_API libxsmm_xtransfunction libxsmm_dispatch_trans(const libxsmm_trans_descriptor* descriptor);
@@ -513,8 +517,8 @@ LIBXSMM_API libxsmm_trsm_xfunction libxsmm_dispatch_trsm(const libxsmm_trsm_desc
  * The result is always a SOA matrix. There is no code cache, and user code has to manage the code pointers.
  * Call libxsmm_release_kernel in order to deallocate the JIT'ted code.
  */
-LIBXSMM_API libxsmm_xmmfunction libxsmm_create_xcsr_soa(const libxsmm_gemm_descriptor* descriptor,
-  const unsigned int* row_ptr, const unsigned int* column_idx, const void* values, unsigned int packed_width);
+LIBXSMM_API libxsmm_xmmfunction libxsmm_create_packed_spxgemm_csr(const libxsmm_gemm_descriptor* descriptor, unsigned int packed_width,
+  const unsigned int* row_ptr, const unsigned int* column_idx, const void* values);
 
 /**
  * Code generation routine for the CSC format which multiplies a dense SOA matrix (each element holds a SIMD-width
@@ -522,8 +526,8 @@ LIBXSMM_API libxsmm_xmmfunction libxsmm_create_xcsr_soa(const libxsmm_gemm_descr
  * The result is always a SOA matrix. There is no code cache, and user code has to manage the code pointers.
  * Call libxsmm_release_kernel in order to deallocate the JIT'ted code.
  */
-LIBXSMM_API libxsmm_xmmfunction libxsmm_create_xcsc_soa(const libxsmm_gemm_descriptor* descriptor,
-  const unsigned int* column_ptr, const unsigned int* row_idx, const void* values, unsigned int packed_width);
+LIBXSMM_API libxsmm_xmmfunction libxsmm_create_packed_spxgemm_csc(const libxsmm_gemm_descriptor* descriptor, unsigned int packed_width,
+  const unsigned int* column_ptr, const unsigned int* row_idx, const void* values);
 
 /**
  * Code generation routine for row-major format B matrix which is multiplied by a dense packed matrix (each element holds a SIMD-width
@@ -531,7 +535,7 @@ LIBXSMM_API libxsmm_xmmfunction libxsmm_create_xcsc_soa(const libxsmm_gemm_descr
  * here is no code cache, and user code has to manage the code pointers.
  * Call libxsmm_release_kernel in order to deallocate the JIT'ted code.
  */
-LIBXSMM_API libxsmm_xmmfunction libxsmm_create_pgemm_ac_rm(const libxsmm_gemm_descriptor* descriptor, unsigned int packed_width);
+LIBXSMM_API libxsmm_xmmfunction libxsmm_create_packed_xgemm_ac_rm(const libxsmm_gemm_descriptor* descriptor, unsigned int packed_width);
 
 /**
  * Code generation routine for row-major format A matrix which is multiplied by a dense packed matrix (each element holds a SIMD-width
@@ -539,7 +543,7 @@ LIBXSMM_API libxsmm_xmmfunction libxsmm_create_pgemm_ac_rm(const libxsmm_gemm_de
  * here is no code cache, and user code has to manage the code pointers.
  * Call libxsmm_release_kernel in order to deallocate the JIT'ted code.
  */
-LIBXSMM_API libxsmm_xmmfunction libxsmm_create_pgemm_bc_rm(const libxsmm_gemm_descriptor* descriptor, unsigned int packed_width);
+LIBXSMM_API libxsmm_xmmfunction libxsmm_create_packed_xgemm_bc_rm(const libxsmm_gemm_descriptor* descriptor, unsigned int packed_width);
 
 /**
  * Code generation routine for the CSR format which multiplies a dense matrix "b" into a dense matrix "c".

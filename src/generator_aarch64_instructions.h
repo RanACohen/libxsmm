@@ -135,12 +135,24 @@
  *   2:   has immediate
  *   1-0: number of register operands
  */
-#if 0
 /* define GP LD/ST instruction */
-#define LIBXSMM_AARCH64_INSTR_GP_LDR_R           0xb8600800
-#define LIBXSMM_AARCH64_INSTR_GP_STR_R           0xb8200800
+#define LIBXSMM_AARCH64_INSTR_GP_LDR_R           0xb8604803
+#define LIBXSMM_AARCH64_INSTR_GP_LDR_I_OFF       0xb9400006
+#define LIBXSMM_AARCH64_INSTR_GP_LDR_I_POST      0xb8400406
+#define LIBXSMM_AARCH64_INSTR_GP_LDR_I_PRE       0xb8400c06
+#define LIBXSMM_AARCH64_INSTR_GP_STR_R           0xb8204803
+#define LIBXSMM_AARCH64_INSTR_GP_STR_I_OFF       0xb9000006
+#define LIBXSMM_AARCH64_INSTR_GP_STR_I_POST      0xb8000406
+#define LIBXSMM_AARCH64_INSTR_GP_STR_I_PRE       0xb8000c06
+#define LIBXSMM_AARCH64_INSTR_GP_LDP_I_OFF       0x29400007
+#define LIBXSMM_AARCH64_INSTR_GP_LDP_I_POST      0x28c00007
+#define LIBXSMM_AARCH64_INSTR_GP_LDP_I_PRE       0x29c00007
+#define LIBXSMM_AARCH64_INSTR_GP_LDNP_I_OFF      0x28400007
+#define LIBXSMM_AARCH64_INSTR_GP_STP_I_OFF       0x29000007
+#define LIBXSMM_AARCH64_INSTR_GP_STP_I_POST      0x28800007
+#define LIBXSMM_AARCH64_INSTR_GP_STP_I_PRE       0x29800007
+#define LIBXSMM_AARCH64_INSTR_GP_STNP_I_OFF      0x28000007
 /* define GP compute instructions */
-#endif
 #define LIBXSMM_AARCH64_INSTR_GP_ADD_I           0x11000006
 #define LIBXSMM_AARCH64_INSTR_GP_ADD_SR          0x0b000007
 #define LIBXSMM_AARCH64_INSTR_GP_SUB_I           0x51000006
@@ -150,6 +162,9 @@
 #define LIBXSMM_AARCH64_INSTR_GP_MOVN            0x12800000
 #define LIBXSMM_AARCH64_INSTR_GP_CBNZ            0x35000000
 #define LIBXSMM_AARCH64_INSTR_GP_CBZ             0x34000000
+/* define GP meta instructions which will to sequenes of aarch64 instructions */
+#define LIBXSMM_AARCH64_INSTR_GP_META_ADD        0x00001000
+#define LIBXSMM_AARCH64_INSTR_GP_META_SUB        0x00001001
 
 /* define ASIMD LD/ST instructions */
 #define LIBXSMM_AARCH64_INSTR_ASIMD_LDR_R        0x3c604803
@@ -160,14 +175,14 @@
 #define LIBXSMM_AARCH64_INSTR_ASIMD_STR_I_OFF    0x3d000006
 #define LIBXSMM_AARCH64_INSTR_ASIMD_STR_I_POST   0x3c000406
 #define LIBXSMM_AARCH64_INSTR_ASIMD_STR_I_PRE    0x3c000c06
-#define LIBXSMM_AARCH64_INSTR_ASIMD_LDP_OFF      0x2d400007
-#define LIBXSMM_AARCH64_INSTR_ASIMD_LDP_POST     0x2cc00007
-#define LIBXSMM_AARCH64_INSTR_ASIMD_LDP_PRE      0x2dc00007
-#define LIBXSMM_AARCH64_INSTR_ASIMD_LDNP_OFF     0x2c400007
-#define LIBXSMM_AARCH64_INSTR_ASIMD_STP_OFF      0x2d000007
-#define LIBXSMM_AARCH64_INSTR_ASIMD_STP_POST     0x2c800007
-#define LIBXSMM_AARCH64_INSTR_ASIMD_STP_PRE      0x2d800007
-#define LIBXSMM_AARCH64_INSTR_ASIMD_STNP_OFF     0x2c000007
+#define LIBXSMM_AARCH64_INSTR_ASIMD_LDP_I_OFF    0x2d400007
+#define LIBXSMM_AARCH64_INSTR_ASIMD_LDP_I_POST   0x2cc00007
+#define LIBXSMM_AARCH64_INSTR_ASIMD_LDP_I_PRE    0x2dc00007
+#define LIBXSMM_AARCH64_INSTR_ASIMD_LDNP_I_OFF   0x2c400007
+#define LIBXSMM_AARCH64_INSTR_ASIMD_STP_I_OFF    0x2d000007
+#define LIBXSMM_AARCH64_INSTR_ASIMD_STP_I_POST   0x2c800007
+#define LIBXSMM_AARCH64_INSTR_ASIMD_STP_I_PRE    0x2d800007
+#define LIBXSMM_AARCH64_INSTR_ASIMD_STNP_I_OFF   0x2c000007
 /* define ASIMD compute instructions */
 #define LIBXSMM_AARCH64_INSTR_ASIMD_FMLA_E_S     0x5f801003
 #define LIBXSMM_AARCH64_INSTR_ASIMD_FMLA_E_V     0x0f801003
@@ -221,26 +236,6 @@ LIBXSMM_API_INTERN
 void libxsmm_aarch64_instruction_close_stream( libxsmm_generated_code* io_generated_code );
 
 /**
- * Generates ldp, stp, etc. instructions
- *
- * @param io_generated_code pointer to the pointer of the generated code structure
- * @param i_vmove_instr actual vmov variant
- * @param i_gp_reg_addr gp register containing the base address
- * @param i_offset optinonal offset
- * @param i_vec_reg_0 first simd register
- * @param i_vec_reg_1 second simd register
- * @param i_asimdwidth widht of regiaters (1,2,4,8,16 byte)
- */
-LIBXSMM_API_INTERN
-void libxsmm_aarch64_instruction_asimd_pair_move( libxsmm_generated_code*           io_generated_code,
-                                                  const unsigned int                i_vmove_instr,
-                                                  const unsigned char               i_gp_reg_addr,
-                                                  const char                        i_offset,
-                                                  const unsigned char               i_vec_reg_0,
-                                                  const unsigned char               i_vec_reg_1,
-                                                  const libxsmm_aarch64_asimd_width i_asimdwidth );
-
-/**
  * Generates ldr, str, etc. instructions
  *
  * @param io_generated_code pointer to the pointer of the generated code structure
@@ -259,6 +254,26 @@ void libxsmm_aarch64_instruction_asimd_move( libxsmm_generated_code*           i
                                              const short                       i_offset,
                                              const unsigned char               i_vec_reg,
                                              const libxsmm_aarch64_asimd_width i_asimdwidth );
+
+/**
+ * Generates ldp, stp, etc. instructions
+ *
+ * @param io_generated_code pointer to the pointer of the generated code structure
+ * @param i_vmove_instr actual vmov variant
+ * @param i_gp_reg_addr gp register containing the base address
+ * @param i_offset optinonal offset
+ * @param i_vec_reg_0 first simd register
+ * @param i_vec_reg_1 second simd register
+ * @param i_asimdwidth widht of regiaters (1,2,4,8,16 byte)
+ */
+LIBXSMM_API_INTERN
+void libxsmm_aarch64_instruction_asimd_pair_move( libxsmm_generated_code*           io_generated_code,
+                                                  const unsigned int                i_vmove_instr,
+                                                  const unsigned char               i_gp_reg_addr,
+                                                  const char                        i_offset,
+                                                  const unsigned char               i_vec_reg_0,
+                                                  const unsigned char               i_vec_reg_1,
+                                                  const libxsmm_aarch64_asimd_width i_asimdwidth );
 
 /**
  * Generates fmla and similar
@@ -284,21 +299,37 @@ void libxsmm_aarch64_instruction_asimd_compute( libxsmm_generated_code*         
  * Generates alu memory movements like ldr, str,
  *
  * @param io_generated_code  pointer to the pointer of the generated code structure
- * @param i_alu_instr actual ld/str instruction
+ * @param i_move_instr actual ld/str instruction
  * @param i_gp_reg_addr base address register
  * @param i_gp_reg_off offset register
- * @param i_gp_reg src/dst register
- * @param i_extentd_mode extend mode
- * @param i_shift_amount shift amount
+ * @param i_gp_reg_dst register
+ * @param i_offset offset
  */
 LIBXSMM_API_INTERN
 void libxsmm_aarch64_instruction_alu_move( libxsmm_generated_code* io_generated_code,
-                                           const unsigned int      i_alu_instr,
+                                           const unsigned int      i_move_instr,
                                            const unsigned int      i_gp_reg_addr,
                                            const unsigned int      i_gp_reg_off,
-                                           const unsigned char     i_gp_reg_srcdst,
-                                           const unsigned char     i_extentd_mode,
-                                           const unsigned char     i_shift_amount );
+                                           const short             i_offset,
+                                           const unsigned char     i_gp_reg_dst );
+
+/**
+ * Generates ldp, stp, etc. instructions
+ *
+ * @param io_generated_code pointer to the pointer of the generated code structure
+ * @param i_move_instr actual move variant
+ * @param i_gp_reg_addr gp register containing the base address
+ * @param i_offset optinonal offset
+ * @param i_gp_reg_0 first simd register
+ * @param i_gp_reg_1 second simd register
+ */
+LIBXSMM_API_INTERN
+void libxsmm_aarch64_instruction_alu_pair_move( libxsmm_generated_code*           io_generated_code,
+                                                const unsigned int                i_move_instr,
+                                                const unsigned char               i_gp_reg_addr,
+                                                const char                        i_offset,
+                                                const unsigned char               i_gp_reg_0,
+                                                const unsigned char               i_gp_reg_1 );
 
 /**
  * Generates movk, movz instructions
@@ -324,9 +355,9 @@ void libxsmm_aarch64_instruction_alu_move_imm16( libxsmm_generated_code* io_gene
  * @param i_imm64 the 64bit immediate operand
  */
 LIBXSMM_API_INTERN
-void libxsmm_aarch64_instruction_alu_set_i64( libxsmm_generated_code*  io_generated_code,
-                                              const unsigned int       i_gp_reg_dst,
-                                              const unsigned long long i_imm64 );
+void libxsmm_aarch64_instruction_alu_set_imm64( libxsmm_generated_code*  io_generated_code,
+                                                const unsigned int       i_gp_reg_dst,
+                                                const unsigned long long i_imm64 );
 
 
 /**
@@ -382,6 +413,24 @@ void libxsmm_aarch64_instruction_alu_compute_shifted_reg( libxsmm_generated_code
                                                           const unsigned char             i_gp_reg_dst,
                                                           const unsigned char             i_imm6,
                                                           const libxsmm_aarch64_shiftmode i_shift_dir );
+
+/**
+ * Generates an optimal sequence of adding up to a 64bit imm to a GPR
+ *
+ * @param io_generated_code pointer to the pointer of the generated code structure
+ * @param i_alu_instr actual alu gpr instruction
+ * @param i_gp_reg_src soruce register
+ * @param i_gp_reg_dst destination register
+ * @param i_gp_reg_tmp temp register which may be used
+ * @param i_imm64 the 64 bit immediate
+ */
+LIBXSMM_API_INTERN
+void libxsmm_aarch64_instruction_alu_compute_imm64( libxsmm_generated_code*         io_generated_code,
+                                                    const unsigned int              i_alu_meta_instr,
+                                                    const unsigned char             i_gp_reg_src,
+                                                    const unsigned char             i_gp_reg_tmp,
+                                                    const unsigned char             i_gp_reg_dst,
+                                                    const unsigned long long        i_imm64 );
 
 /**
  * Generates a label to which one can jump back and pushes it on the loop label stack

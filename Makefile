@@ -747,7 +747,7 @@ endif
 define DEFINE_COMPILE_RULE
 $(1): $(2) $(3) $(dir $(1))/.make
 	@rm -f $(1)
-	-$(CC) $(4) -c $(2) -o $(1)
+	-$(CC) $(4) $(WERROR_CFLAG) -c $(2) -o $(1)
 	@if ! [ -e $(1) ]; then \
 		echo "--------------------------------------------------------------"; \
 		echo "In case of assembler error, perhaps GNU Binutils are outdated."; \
@@ -810,20 +810,6 @@ $(foreach OBJ,$(OBJFILES_GEN_GEMM_BIN),$(eval $(call DEFINE_COMPILE_RULE, \
   $(OBJ),$(patsubst %.o,$(ROOTDIR)/$(SRCDIR)/%.c,$(notdir $(OBJ))), \
   $(INCDIR)/libxsmm.h $(INCDIR)/libxsmm_source.h, \
   $(DFLAGS) $(IFLAGS) $(TGT_FLAGS) $(CFLAGS))))
-
-.PHONY: compile_mic
-ifneq (0,$(MIC))
-ifneq (0,$(MPSS))
-compile_mic:
-$(BLDDIR)/mic/%.o: $(BLDDIR)/%.c $(BLDDIR)/mic/.make $(INCDIR)/libxsmm.h $(INCDIR)/libxsmm_source.h $(BLDDIR)/libxsmm_dispatch.h
-	$(CC) $(DFLAGS) $(IFLAGS) $(CFLAGS) -mmic -c $< -o $@
-endif
-endif
-
-.PHONY: compile_hst
-compile_hst:
-$(BLDDIR)/intel64/%.o: $(BLDDIR)/%.c $(BLDDIR)/intel64/.make $(INCDIR)/libxsmm.h $(INCDIR)/libxsmm_source.h $(BLDDIR)/libxsmm_dispatch.h
-	$(CC) $(DFLAGS) $(IFLAGS) $(CFLAGS) $(CTARGET) -c $< -o $@
 
 .PHONY: module_mic
 ifneq (0,$(MIC))
@@ -1350,7 +1336,7 @@ $(ROOTDIR)/documentation/libxsmm_prof.md $(ROOTDIR)/documentation/libxsmm_tune.m
 	@pandoc -D latex \
 	| sed \
 		-e 's/\(\\documentclass\[..*\]{..*}\)/\1\n\\pagenumbering{gobble}\n\\RedeclareSectionCommands[beforeskip=-1pt,afterskip=1pt]{subsection,subsubsection}/' \
-		-e 's/\\usepackage{listings}/\\usepackage{listings}\\lstset{basicstyle=\\footnotesize\\ttfamily}/' \
+		-e 's/\\usepackage{listings}/\\usepackage{listings}\\lstset{basicstyle=\\footnotesize\\ttfamily,showstringspaces=false}/' \
 		-e 's/\(\\usepackage.*{hyperref}\)/\\usepackage[hyphens]{url}\n\1/' \
 		> $(TMPFILE)
 	@cd $(ROOTDIR)/documentation && ( \
@@ -1373,7 +1359,7 @@ $(ROOTDIR)/documentation/libxsmm_prof.md $(ROOTDIR)/documentation/libxsmm_tune.m
 		-e 's/----*//g' \
 	| pandoc \
 		--template=$(call qndir,$(TMPFILE)) --listings \
-		-f markdown_github+all_symbols_escapable+subscript+superscript \
+		-f gfm+subscript+superscript \
 		-V documentclass=scrartcl \
 		-V title-meta="LIBXSMM Documentation" \
 		-V author-meta="Hans Pabst, Alexander Heinecke" \
@@ -1399,13 +1385,13 @@ $(DOCDIR)/libxsmm_samples.$(DOCEXT): $(ROOTDIR)/documentation/libxsmm_samples.md
 	@pandoc -D latex \
 	| sed \
 		-e 's/\(\\documentclass\[..*\]{..*}\)/\1\n\\pagenumbering{gobble}\n\\RedeclareSectionCommands[beforeskip=-1pt,afterskip=1pt]{subsection,subsubsection}/' \
-		-e 's/\\usepackage{listings}/\\usepackage{listings}\\lstset{basicstyle=\\footnotesize\\ttfamily}/' \
+		-e 's/\\usepackage{listings}/\\usepackage{listings}\\lstset{basicstyle=\\footnotesize\\ttfamily,showstringspaces=false}/' \
 		-e 's/\(\\usepackage.*{hyperref}\)/\\usepackage[hyphens]{url}\n\1/' \
 		> $(TMPFILE)
 	@iconv -t utf-8 $(ROOTDIR)/documentation/libxsmm_samples.md \
 	| pandoc \
 		--template=$(TMPFILE) --listings \
-		-f markdown_github+all_symbols_escapable+subscript+superscript \
+		-f gfm+subscript+superscript \
 		-V documentclass=scrartcl \
 		-V title-meta="LIBXSMM Sample Code Summary" \
 		-V classoption=DIV=45 \
@@ -1420,7 +1406,7 @@ $(DOCDIR)/tensorflow.$(DOCEXT): $(DOCDIR)/.make $(ROOTDIR)/Makefile $(ROOTDIR)/d
 	@pandoc -D latex \
 	| sed \
 		-e 's/\(\\documentclass\[..*\]{..*}\)/\1\n\\pagenumbering{gobble}\n\\RedeclareSectionCommands[beforeskip=-1pt,afterskip=1pt]{subsection,subsubsection}/' \
-		-e 's/\\usepackage{listings}/\\usepackage{listings}\\lstset{basicstyle=\\footnotesize\\ttfamily}/' \
+		-e 's/\\usepackage{listings}/\\usepackage{listings}\\lstset{basicstyle=\\footnotesize\\ttfamily,showstringspaces=false}/' \
 		-e 's/\(\\usepackage.*{hyperref}\)/\\usepackage[hyphens]{url}\n\1/' \
 		> $(TMPFILE)
 	@cd $(ROOTDIR)/documentation && iconv -t utf-8 tensorflow.md \
@@ -1430,7 +1416,7 @@ $(DOCDIR)/tensorflow.$(DOCEXT): $(DOCDIR)/.make $(ROOTDIR)/Makefile $(ROOTDIR)/d
 		-e 's/----*//g' \
 	| pandoc \
 		--template=$(call qndir,$(TMPFILE)) --listings \
-		-f markdown_github+all_symbols_escapable+subscript+superscript \
+		-f gfm+subscript+superscript \
 		-V documentclass=scrartcl \
 		-V title-meta="TensorFlow with LIBXSMM" \
 		-V author-meta="Hans Pabst" \

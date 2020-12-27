@@ -21,6 +21,7 @@
 #include <time.h>
 #include <math.h>
 #include <unistd.h>
+#include <assert.h>
 #include <immintrin.h>
 #ifdef _OPENMP
 #include <omp.h>
@@ -29,9 +30,10 @@
 #define omp_get_thread_num() (0)
 #define omp_get_max_threads() (1)
 #endif
-
-#ifdef USE_LIBXSMM_JIT
 #include <libxsmm.h>
+
+#ifdef USE_PERF_COUNTERS
+#include "counters.h"
 #endif
 
 const int alignment = 64;
@@ -96,13 +98,13 @@ double get_checksum(FTyp *buf, size_t sz)
 
 inline void *my_malloc(size_t sz, size_t align)
 {
-    return _mm_malloc(sz, align);
+  return libxsmm_aligned_malloc(sz, align);
 }
 
 inline void my_free(void *p)
 {
     if(!p) return;
-    _mm_free(p);
+    libxsmm_free(p);
 }
 
 #define DECL_VLA_PTR(type, name, dims, ptr) type (*name)dims = (type (*)dims)ptr
@@ -272,7 +274,59 @@ void sparse_transpose(EmbeddingInOut *eio)
   eio->U = U;
 }
 
-void allocate_buffers_and_generte_rnd_input(int N, int P, EmbeddingBag *eb, EmbeddingInOut *eio)
+// based on https://www.csee.usf.edu/~kchriste/tools/genzipf.c
+int zipf_dist(double alpha, int M)
+{
+  static int init_done = 0;
+  static double k = 0;
+  static double *sum_probs;
+  static int prev_M = 0;
+  double z;
+  int value;
+  int    i;
+  int low, high, mid;
+
+  if (prev_M != M) {
+    init_done = 0;
+    prev_M = M;
+  }
+
+  if (!init_done) {
+    for (i=1; i<=M; i++)
+      k = k + (1.0 / pow((double) i, alpha));
+    k = 1.0 / k;
+
+    sum_probs = (double *) my_malloc((M+1)*sizeof(double), alignment);
+    sum_probs[0] = 0;
+    for (i=1; i<=M; i++) {
+      sum_probs[i] = sum_probs[i-1] + k / pow((double) i, alpha);
+    }
+    init_done = 1;
+  }
+
+  do {
+    drand48_r(&rand_buf, &z);
+  } while ((z == 0) || (z == 1));
+
+  low = 1, high = M, mid;
+  do {
+    mid = floor((low+high)/2);
+    if (sum_probs[mid] >= z && sum_probs[mid-1] < z) {
+      value = mid;
+      break;
+    } else if (sum_probs[mid] >= z) {
+      high = mid-1;
+    } else {
+      low = mid+1;
+    }
+  } while (low <= high);
+
+  assert((value >=1) && (value <= M));
+
+  return(value);
+}
+
+void allocate_buffers_and_generte_rnd_input(int N, int P, double alpha, EmbeddingBag *eb, EmbeddingInOut *eio)
 {
   int E = eb->E;
   int M = eb->M;
@@ -290,7 +344,7 @@ void allocate_buffers_and_generte_rnd_input(int N, int P, EmbeddingBag *eb, Embe
   for(int i = 1; i <= N; i++) {
     double randval;
     drand48_r(&rand_buf, &randval);
-    int cp = (int)(randval * P);
+    int cp = (int)(randval * P * 2);
     if (cp == 0) cp = 1;
     NS += cp;
     eio->offsets[i] = NS;
@@ -305,9 +359,15 @@ void allocate_buffers_and_generte_rnd_input(int N, int P, EmbeddingBag *eb, Embe
     int end = eio->offsets[n+1];
     for (int i = start; i < end; i++)
     {
-      double randval;
-      drand48_r(&rand_buf, &randval);
-      ITyp ind = (ITyp)(randval * M);
+      ITyp ind;
+      if (alpha == 0.0) {
+        double randval;
+        drand48_r(&rand_buf, &randval);
+        ind = (ITyp)(randval * M);
+      } else {
+        ind = (ITyp) zipf_dist(alpha, M);
+      }
+
       if (ind == M)
         ind--;
       eio->indices[i] = ind;
@@ -336,25 +396,26 @@ void free_buffers(EmbeddingInOut *eio)
   my_free(eio->wt_indices);
 }
 
-
 int iters = 100;
 int N = 2048;
 int E = 64;
 int P = 100;
 int M = 1000000;
 int S = 8;
+double alpha = 0.0;
 
 #define my_printf(fmt, args...) printf(fmt, args)
 
 int main(int argc, char * argv[]) {
   if(argc > 1 && strncmp(argv[1], "-h", 3) == 0) {
-    printf("Usage: %s iters N E M S P\n", argv[0]);
+    printf("Usage: %s iters N E M S P alpha \n", argv[0]);
     printf("iters: Number of iterations (= %d)\n", iters);
     printf("N: Minibatch (= %d)\n", N);
     printf("E: embedding row width (= %d)\n", E);
     printf("M: Number of rows per table (= %d)\n", M);
     printf("S: Number of Tables (= %d)\n", S);
     printf("P: Average number of indices per look up (= %d)\n", P);
+    printf("alpha: Alpha value for Zipf distribution to generate Indices. Use 0 for uniform distribution");
     exit(0);
   }
 
@@ -366,15 +427,30 @@ int main(int argc, char * argv[]) {
     if(argc > i) M = atoi(argv[i++]);
     if(argc > i) S = atoi(argv[i++]);
     if(argc > i) P = atoi(argv[i++]);
+    if(argc > i) alpha = atof(argv[i++]);
   }
 
-  printf("Using: iters: %d N: %d E: %d M: %d S: %d P: %d\n", iters, N, E, M, S, P);
+  printf("Using: iters: %d N: %d E: %d M: %d S: %d P: %d alpha: %f\n", iters, N, E, M, S, P, alpha);
 
   double checksum = 0.0;
 
   int LS = S;
   int LN = N;
   set_random_seed(777);
+
+#ifdef USE_PERF_COUNTERS
+  ctrs_skx_uc a, b, s;
+  bw_gibs bw_avg;
+
+#ifdef USE_LLC_COUNTERS
+  setup_skx_uc_ctrs( CTRS_EXP_CHA_LLC_LOOKUP );
+#else
+  setup_skx_uc_ctrs( CTRS_EXP_DRAM_CAS );
+#endif
+  zero_skx_uc_ctrs( &a );
+  zero_skx_uc_ctrs( &b );
+  zero_skx_uc_ctrs( &s );
+#endif
 
   EmbeddingInOut *eio[iters][LS];
   EmbeddingBag *eb[LS];
@@ -389,7 +465,7 @@ int main(int argc, char * argv[]) {
     {
       eio[j][i] = new EmbeddingInOut();
       auto t0 = get_time();
-      allocate_buffers_and_generte_rnd_input(N, P, eb[i], eio[j][i]);
+      allocate_buffers_and_generte_rnd_input(N, P, alpha, eb[i], eio[j][i]);
       auto t1 = get_time();
       //printf("Rand init time = %.3f ms\n", t1 - t0);
       tNS += eio[j][i]->NS;
@@ -407,6 +483,9 @@ int main(int argc, char * argv[]) {
     printf("Warmup Iter %4d: Time = %.3f ms\n", i, t1-t0);
   }
 
+#ifdef USE_PERF_COUNTERS
+  read_skx_uc_ctrs( &a );
+#endif
   double t0 = get_time();
   double bwdupdTime = 0.0;
 
@@ -417,10 +496,15 @@ int main(int argc, char * argv[]) {
       eb[s]->fused_backward_update_adagrad(eio[i][s]->U, eio[i][s]->NS, N, eio[i][s]->mb_offsets, eio[i][s]->mb_indices, eio[i][s]->wt_indices, eio[i][s]->gradout, -0.1, 1.0e-6);
     }
     double t1 = get_time();
-    printf("Iter %4d: Time = %.3f ms\n", i, t1-t0);
+    //printf("Iter %4d: Time = %.3f ms\n", i, t1-t0);
     bwdupdTime += t1-t0;
   }
   double t1 = get_time();
+#ifdef USE_PERF_COUNTERS
+  read_skx_uc_ctrs( &b );
+  difa_skx_uc_ctrs( &a, &b, &s );
+  divi_skx_uc_ctrs( &s, iters );
+#endif
 #ifdef VERIFY_CORRECTNESS
   for(int s = 0; s < LS; s++) {
     double psum = get_checksum(eb[s]->weight_, M*E);
@@ -430,16 +514,35 @@ int main(int argc, char * argv[]) {
 #endif
 
   //  tU*E wt RW + N*E gO R + N mb_offsets + NS mb_ind + U wt_ind
-  size_t bwdupdBytesMin = ((size_t)2*tU*(E+1)) * sizeof(FTyp) + ((size_t)tNS+tU) * sizeof(ITyp) + ((size_t)iters*LS*N*E) * sizeof(FTyp) + ((size_t)iters*LS*N) * sizeof(ITyp);
-  size_t bwdupdBytesMax = ((size_t)2*tU*(E+16)) * sizeof(FTyp) + ((size_t)tNS+tU) * sizeof(ITyp) + ((size_t)iters*LS*N*E) * sizeof(FTyp) + ((size_t)iters*LS*N) * sizeof(ITyp);
+  size_t bwdupdBytesMinRd = ((size_t)tU*(E+1)) * sizeof(FTyp) + ((size_t)tNS+tU) * sizeof(ITyp) + ((size_t)iters*LS*N*E) * sizeof(FTyp) + ((size_t)iters*LS*N) * sizeof(ITyp);
+  size_t bwdupdBytesMaxRd = ((size_t)tU*(E+16)) * sizeof(FTyp) + ((size_t)tNS+tU) * sizeof(ITyp) + ((size_t)iters*LS*N*E) * sizeof(FTyp) + ((size_t)iters*LS*N) * sizeof(ITyp);
+
+  size_t bwdupdBytesMinWr = ((size_t)tU*(E+1)) * sizeof(FTyp);
+  size_t bwdupdBytesMaxWr = ((size_t)tU*(E+16)) * sizeof(FTyp);
+
+  size_t bwdupdBytesMin = bwdupdBytesMinRd + bwdupdBytesMinWr;
+  size_t bwdupdBytesMax = bwdupdBytesMaxRd + bwdupdBytesMaxWr;
 
   my_printf("Iters = %d, LS = %d, N = %d, M = %d, E = %d, avgNS = %ld, avgU = %ld, P = %d\n", iters, LS, N, M, E, tNS/(iters*LS), tU/(iters*LS), P);
   //printf("Time: Fwd: %.3f ms Bwd: %.3f ms Upd: %.3f  Total: %.3f\n", fwdTime, bwdTime, updTime, t1-t0);
   my_printf("Per Iter  Time: %.3f ms  Total: %.3f ms\n", bwdupdTime/(iters), (t1-t0)/(iters));
   my_printf("Per Table Time: %.3f ms  Total: %.3f ms\n", bwdupdTime/(iters*LS), (t1-t0)/(iters*LS));
 
-  my_printf("BW: Min: %.3f GB/s   Max: %.3f GB/s\n", bwdupdBytesMin*1e-6/bwdupdTime, bwdupdBytesMax*1e-6/bwdupdTime);
+  double scale = 1000.0/(1024.0*1024.0*1024.0);
+  my_printf("BW: RD Min: %.3f GB/s   Max: %.3f GB/s \n", bwdupdBytesMinRd*scale/bwdupdTime, bwdupdBytesMaxRd*scale/bwdupdTime);
+  my_printf("BW: WR Min: %.3f GB/s   Max: %.3f GB/s \n", bwdupdBytesMinWr*scale/bwdupdTime, bwdupdBytesMaxWr*scale/bwdupdTime);
+  my_printf("BW: TT Min: %.3f GB/s   Max: %.3f GB/s \n", bwdupdBytesMin*scale/bwdupdTime, bwdupdBytesMax*scale/bwdupdTime);
 
+#ifdef USE_PERF_COUNTERS
+
+#ifdef USE_LLC_COUNTERS
+  get_llc_bw_skx( &s, bwdupdTime/iters/1000.0, &bw_avg );
+  printf("Measured LLC AVG GB/s: RD %f   WR %f   TT %f\n", bw_avg.rd, bw_avg.wr, bw_avg.rd + bw_avg.wr);
+#else
+  get_cas_ddr_bw_skx( &s, bwdupdTime/iters/1000.0, &bw_avg );
+  printf("Measured MEM AVG GB/s: RD %f   WR %f   TT %f\n", bw_avg.rd, bw_avg.wr, bw_avg.rd + bw_avg.wr);
+#endif
+#endif
 
 #ifdef VERIFY_CORRECTNESS
   printf("Checksum = %g\n", checksum);
