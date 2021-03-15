@@ -11,8 +11,11 @@
 #include <libxsmm_intrinsics_x86.h>
 #include <libxsmm_generator.h>
 #include <libxsmm_memory.h>
+#if !defined(_WIN32)
+# include <sys/mman.h>
+#endif
 
-#if defined(LIBXSMM_PLATFORM_SUPPORTED)
+#if defined(LIBXSMM_PLATFORM_X86)
 /* XGETBV: receive results (EAX, EDX) for eXtended Control Register (XCR). */
 /* CPUID, receive results (EAX, EBX, ECX, EDX) for requested FUNCTION/SUBFN. */
 #if defined(_MSC_VER) /*defined(_WIN32) && !defined(__GNUC__)*/
@@ -59,7 +62,7 @@
 LIBXSMM_API int libxsmm_cpuid_x86(libxsmm_cpuid_x86_info* info)
 {
   static int result = LIBXSMM_TARGET_ARCH_UNKNOWN;
-#if !defined(LIBXSMM_PLATFORM_SUPPORTED)
+#if !defined(LIBXSMM_PLATFORM_X86)
   if (NULL != info) LIBXSMM_MEMZERO127(info);
 #else
   unsigned int eax, ebx, ecx, edx;
@@ -82,6 +85,8 @@ LIBXSMM_API int libxsmm_cpuid_x86(libxsmm_cpuid_x86_info* info)
           fclose(selinux);
         }
       }
+# elif defined(MAP_JIT)
+      libxsmm_se = 1;
 # endif
       LIBXSMM_CPUID_X86(1, 0/*ecx*/, eax, ebx, ecx, edx);
       if (LIBXSMM_CPUID_CHECK(ecx, 0x00000001)) { /* SSE3(0x00000001) */
@@ -212,10 +217,11 @@ LIBXSMM_API int libxsmm_cpuid_x86(libxsmm_cpuid_x86_info* info)
 
 LIBXSMM_API int libxsmm_cpuid(void)
 {
-#if defined(__aarch64__)
+#if defined(LIBXSMM_PLATFORM_AARCH64)
   /* @TODO add AARCH64 feature check */
   return LIBXSMM_AARCH64_V81;
-#else
+#endif
+#if defined(LIBXSMM_PLATFORM_X86)
   return libxsmm_cpuid_x86(NULL/*info*/);
 #endif
 }
@@ -281,6 +287,7 @@ LIBXSMM_API const char* libxsmm_cpuid_name(int id)
 LIBXSMM_API int libxsmm_cpuid_vlen32(int id)
 {
   int result;
+#if defined(LIBXSMM_PLATFORM_X86)
   if (LIBXSMM_X86_AVX512 <= id) {
     result = 16;
   }
@@ -290,9 +297,11 @@ LIBXSMM_API int libxsmm_cpuid_vlen32(int id)
   else if (LIBXSMM_X86_SSE42 <= id) {
     result = 4;
   }
-  else if (LIBXSMM_AARCH64_V81 == id) {
+#elif defined(LIBXSMM_PLATFORM_AARCH64)
+  if (LIBXSMM_AARCH64_V81 == id) {
     result = 4;
   }
+#endif
   else { /* scalar */
     result = 1;
   }

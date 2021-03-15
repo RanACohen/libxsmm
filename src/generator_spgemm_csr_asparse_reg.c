@@ -63,6 +63,7 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
   unsigned int l_n_row_idx = i_row_idx[i_xgemm_desc->m];
   double *const l_unique_values = (double*)(0 != l_n_row_idx ? malloc(sizeof(double) * l_n_row_idx) : NULL);
   unsigned int *const l_unique_pos = (unsigned int*)(0 != l_n_row_idx ? malloc(sizeof(unsigned int) * l_n_row_idx) : NULL);
+  int *const l_unique_sgn = (int*)(0 != l_n_row_idx ? malloc(sizeof(int) * l_n_row_idx) : NULL);
   double l_code_const_dp[8];
   float l_code_const_fp[16];
   unsigned int l_const_perm_ops[16];
@@ -72,8 +73,8 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
   libxsmm_gp_reg_mapping l_gp_reg_mapping;
 
   /* check if mallocs were successful */
-  if ( 0 == l_unique_values || 0 == l_unique_pos ) {
-    free(l_unique_values); free(l_unique_pos);
+  if ( 0 == l_unique_values || 0 == l_unique_pos || 0 == l_unique_sgn ) {
+    free(l_unique_values); free(l_unique_pos); free(l_unique_sgn);
     LIBXSMM_HANDLE_ERROR( io_generated_code, LIBXSMM_ERR_CSR_ALLOC_DATA );
     return;
   }
@@ -84,7 +85,7 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
        (strcmp(i_arch, "skx") != 0) &&
        (strcmp(i_arch, "clx") != 0) &&
        (strcmp(i_arch, "cpx") != 0) ) {
-    free(l_unique_values); free(l_unique_pos);
+    free(l_unique_values); free(l_unique_pos); free(l_unique_sgn);
     LIBXSMM_HANDLE_ERROR( io_generated_code, LIBXSMM_ERR_ARCH );
     return;
   } else {
@@ -108,29 +109,31 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
 
   /* Let's figure out how many unique values we have */
   l_unique = 1;
-  l_unique_values[0] = i_values[0];
+  l_unique_values[0] = fabs(i_values[0]);
   l_unique_pos[0] = 0;
+  l_unique_sgn[0] = (i_values[0] > 0) ? 1 : -1;
   for ( l_m = 1; l_m < l_n_row_idx; l_m++ ) {
     l_hit = 0;
     /* search for the value */
     for ( l_z = 0; l_z < l_unique; l_z++) {
-      if ( /*l_unique_values[l_z] == i_values[l_m]*/!(l_unique_values[l_z] < i_values[l_m]) && !(l_unique_values[l_z] > i_values[l_m]) ) {
+      if ( /*l_unique_values[l_z] == i_values[l_m]*/!(l_unique_values[l_z] < fabs(i_values[l_m])) && !(l_unique_values[l_z] > fabs(i_values[l_m])) ) {
         l_unique_pos[l_m] = l_z;
         l_hit = 1;
       }
     }
-    /* values was not found */
+    /* value was not found */
     if ( l_hit == 0 ) {
-      l_unique_values[l_unique] = i_values[l_m];
+      l_unique_values[l_unique] = fabs(i_values[l_m]);
       l_unique_pos[l_m] = l_unique;
       l_unique++;
     }
+    l_unique_sgn[l_m] = (i_values[l_m] > 0) ? 1 : -1;
   }
 
   /* check that we have enough registers for the datatype */
   if ( (LIBXSMM_GEMM_PRECISION_F64 == LIBXSMM_GETENUM_INP( i_xgemm_desc->datatype ) && l_unique > LIBXSMM_SPGEMM_ASPARSE_REG_MAX_UNIQUE_L1_DP) ||
        (LIBXSMM_GEMM_PRECISION_F32 == LIBXSMM_GETENUM_INP( i_xgemm_desc->datatype ) && l_unique > LIBXSMM_SPGEMM_ASPARSE_REG_MAX_UNIQUE_L1_SP) ) {
-    free(l_unique_values); free(l_unique_pos);
+    free(l_unique_values); free(l_unique_pos); free(l_unique_sgn);
     LIBXSMM_HANDLE_ERROR( io_generated_code, LIBXSMM_ERR_UNIQUE_VAL );
     return;
   }
@@ -171,7 +174,7 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
 
   /* inner chunk size */
   if ( i_xgemm_desc->n != l_micro_kernel_config.vector_length ) {
-    free(l_unique_values); free(l_unique_pos);
+    free(l_unique_values); free(l_unique_pos); free(l_unique_sgn);
     LIBXSMM_HANDLE_ERROR( io_generated_code, LIBXSMM_ERR_N_BLOCK );
     return;
   }
@@ -290,8 +293,8 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
                                             l_micro_kernel_config.c_vmove_instruction,
                                             l_gp_reg_mapping.gp_reg_c,
                                             LIBXSMM_X86_GP_REG_UNDEF, 0,
-                                            l_m*i_xgemm_desc->ldc*l_micro_kernel_config.datatype_size +
-                                              l_n*l_micro_kernel_config.datatype_size*l_micro_kernel_config.vector_length,
+                                            l_m*i_xgemm_desc->ldc*l_micro_kernel_config.datatype_size_out +
+                                              l_n*l_micro_kernel_config.datatype_size_out*l_micro_kernel_config.vector_length,
                                             l_micro_kernel_config.vector_name,
                                             LIBXSMM_SPGEMM_ASPARSE_REG_ACC_REG+l_n, 0, 1, 0 );
         } else {
@@ -310,16 +313,23 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
                                             LIBXSMM_X86_INSTR_PREFETCHT2,
                                             l_gp_reg_mapping.gp_reg_c,
                                             LIBXSMM_X86_GP_REG_UNDEF, 0,
-                                            l_m*i_xgemm_desc->ldc*l_micro_kernel_config.datatype_size +
-                                              (l_n+1)*l_micro_kernel_config.datatype_size*l_micro_kernel_config.vector_length );
+                                            l_m*i_xgemm_desc->ldc*l_micro_kernel_config.datatype_size_out +
+                                              (l_n+1)*l_micro_kernel_config.datatype_size_out*l_micro_kernel_config.vector_length );
         }
       }
     }
     for ( l_z = 0; l_z < l_row_elements; l_z++ ) {
       /* check k such that we just use columns which actually need to be multiplied */
       const unsigned int u = i_row_idx[l_m] + l_z;
-      unsigned int l_unique_reg;
+      unsigned int l_unique_reg, fma_instruction;
       LIBXSMM_ASSERT(u < l_n_row_idx);
+
+      /* select the correct FMA instruction */
+      if ( LIBXSMM_GEMM_PRECISION_F64 == LIBXSMM_GETENUM_INP( i_xgemm_desc->datatype ) ) {
+        fma_instruction = (l_unique_sgn[u] == 1) ? LIBXSMM_X86_INSTR_VFMADD231PD : LIBXSMM_X86_INSTR_VFNMADD231PD;
+      } else {
+        fma_instruction = (l_unique_sgn[u] == 1) ? LIBXSMM_X86_INSTR_VFMADD231PS : LIBXSMM_X86_INSTR_VFNMADD231PS;
+      }
 
       /* broadcast unique element of A if not in pre-broadcast mode */
       if (l_unique > 31 ) {
@@ -392,13 +402,13 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
 
         libxsmm_x86_instruction_vec_compute_mem( io_generated_code,
                                                  l_micro_kernel_config.instruction_set,
-                                                 l_micro_kernel_config.vmul_instruction,
+                                                 fma_instruction,
                                                  0,
                                                  l_gp_reg_mapping.gp_reg_b,
                                                  LIBXSMM_X86_GP_REG_UNDEF,
                                                  0,
-                                                 i_column_idx[u]*i_xgemm_desc->ldb*l_micro_kernel_config.datatype_size +
-                                                   l_n*l_micro_kernel_config.datatype_size*l_micro_kernel_config.vector_length,
+                                                 i_column_idx[u]*i_xgemm_desc->ldb*l_micro_kernel_config.datatype_size_in +
+                                                   l_n*l_micro_kernel_config.datatype_size_in*l_micro_kernel_config.vector_length,
                                                  l_micro_kernel_config.vector_name,
                                                  l_unique_reg,
                                                  LIBXSMM_SPGEMM_ASPARSE_REG_ACC_REG+l_n );
@@ -408,8 +418,8 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
                                             l_gp_reg_mapping.gp_reg_b,
                                             LIBXSMM_X86_GP_REG_UNDEF,
                                             0,
-                                            i_column_idx[u]*i_xgemm_desc->ldb*l_micro_kernel_config.datatype_size +
-                                              (l_n+1)*l_micro_kernel_config.datatype_size*l_micro_kernel_config.vector_length );
+                                            i_column_idx[u]*i_xgemm_desc->ldb*l_micro_kernel_config.datatype_size_in +
+                                              (l_n+1)*l_micro_kernel_config.datatype_size_in*l_micro_kernel_config.vector_length );
       }
     }
     if (l_row_elements > 0) {
@@ -429,8 +439,8 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
                                           l_store_instruction,
                                           l_gp_reg_mapping.gp_reg_c,
                                           LIBXSMM_X86_GP_REG_UNDEF, 0,
-                                          l_m*i_xgemm_desc->ldc*l_micro_kernel_config.datatype_size +
-                                            l_n*l_micro_kernel_config.datatype_size*l_micro_kernel_config.vector_length,
+                                          l_m*i_xgemm_desc->ldc*l_micro_kernel_config.datatype_size_out +
+                                            l_n*l_micro_kernel_config.datatype_size_out*l_micro_kernel_config.vector_length,
                                           l_micro_kernel_config.vector_name,
                                           LIBXSMM_SPGEMM_ASPARSE_REG_ACC_REG+l_n, 0, 0, 1 );
       }
@@ -448,4 +458,5 @@ void libxsmm_generator_spgemm_csr_asparse_reg( libxsmm_generated_code*         i
 
   free(l_unique_values);
   free(l_unique_pos);
+  free(l_unique_sgn);
 }

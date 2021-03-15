@@ -15,6 +15,12 @@
 #include "generator_common.h"
 #include "../include/libxsmm_typedefs.h"
 
+typedef enum libxsmm_x86_simd_name {
+  LIBXSMM_X86_SIMD_NAME_XMM = 0x0,
+  LIBXSMM_X86_SIMD_NAME_YMM = 0x1,
+  LIBXSMM_X86_SIMD_NAME_ZMM = 0x2
+} libxsmm_x86_simd_name;
+
 /**
  * Opens the inline assembly section / jit stream
  *
@@ -49,64 +55,64 @@ void libxsmm_x86_instruction_close_stream_amx( libxsmm_generated_code*   io_gene
                                            unsigned int                  i_prefetch );
 
 LIBXSMM_API_INTERN
-void libxsmm_x86_instruction_vex_compute_2reg_mem( libxsmm_generated_code* io_generated_code,
-                                                   const unsigned int      i_vec_instr,
-                                                   const unsigned int      i_gp_reg_base,
-                                                   const unsigned int      i_gp_reg_idx,
-                                                   const unsigned int      i_scale,
-                                                   const int               i_displacement,
-                                                   const char              i_vector_name,
-                                                   const unsigned int      i_vec_reg_number_src,
-                                                   const unsigned int      i_vec_reg_number_dst );
+void libxsmm_x86_instruction_vex_compute_2reg_mem( libxsmm_generated_code*     io_generated_code,
+                                                   const unsigned int          i_vec_instr,
+                                                   const unsigned int          i_gp_reg_base,
+                                                   const unsigned int          i_gp_reg_idx,
+                                                   const unsigned int          i_scale,
+                                                   const int                   i_displacement,
+                                                   const libxsmm_x86_simd_name i_vector_name,
+                                                   const unsigned int          i_vec_reg_number_src,
+                                                   const unsigned int          i_vec_reg_number_dst );
 
 LIBXSMM_API_INTERN
-void libxsmm_x86_instruction_vex_compute_3reg( libxsmm_generated_code* io_generated_code,
-                                               const unsigned int      i_vec_instr,
-                                               const char              i_vector_name,
-                                               const unsigned int      i_vec_reg_number_0,
-                                               const unsigned int      i_vec_reg_number_1,
-                                               const unsigned int      i_vec_reg_number_2 );
+void libxsmm_x86_instruction_vex_compute_3reg( libxsmm_generated_code*     io_generated_code,
+                                               const unsigned int          i_vec_instr,
+                                               const libxsmm_x86_simd_name i_vector_name,
+                                               const unsigned int          i_vec_reg_number_0,
+                                               const unsigned int          i_vec_reg_number_1,
+                                               const unsigned int          i_vec_reg_number_2 );
 
 LIBXSMM_API_INTERN
-void libxsmm_x86_instruction_evex_compute_2reg_mem( libxsmm_generated_code* io_generated_code,
-                                                    const unsigned int      i_vec_instr,
-                                                    const unsigned int      i_use_broadcast,
-                                                    const unsigned int      i_gp_reg_base,
-                                                    const unsigned int      i_gp_reg_idx,
-                                                    const unsigned int      i_scale,
-                                                    const int               i_displacement,
-                                                    const char              i_vector_name,
-                                                    const unsigned int      i_vec_reg_number_src,
-                                                    const unsigned int      i_vec_reg_number_dst,
-                                                    const unsigned int      i_mask_reg_number,
-                                                    const unsigned int      i_use_zero_masking );
+void libxsmm_x86_instruction_evex_compute_2reg_mem( libxsmm_generated_code*     io_generated_code,
+                                                    const unsigned int          i_vec_instr,
+                                                    const unsigned int          i_use_broadcast,
+                                                    const unsigned int          i_gp_reg_base,
+                                                    const unsigned int          i_reg_idx,
+                                                    const unsigned int          i_scale,
+                                                    const int                   i_displacement,
+                                                    const libxsmm_x86_simd_name i_vector_name,
+                                                    const unsigned int          i_vec_reg_number_src,
+                                                    const unsigned int          i_vec_reg_number_dst,
+                                                    const unsigned int          i_mask_reg_number,
+                                                    const unsigned int          i_use_zero_masking );
 
 LIBXSMM_API_INTERN
-void libxsmm_x86_instruction_evex_compute_3reg( libxsmm_generated_code* io_generated_code,
-                                                const unsigned int      i_vec_instr,
-                                                const char              i_vector_name,
-                                                const unsigned int      i_vec_reg_number_0,
-                                                const unsigned int      i_vec_reg_number_1,
-                                                const unsigned int      i_vec_reg_number_2,
-                                                const unsigned int      i_mask_reg_number,
-                                                const unsigned int      i_use_zero_masking,
-                                                const unsigned char     i_sae_cntl );
+void libxsmm_x86_instruction_evex_compute_3reg( libxsmm_generated_code*     io_generated_code,
+                                                const unsigned int          i_vec_instr,
+                                                const libxsmm_x86_simd_name i_vector_name,
+                                                const unsigned int          i_vec_reg_number_0,
+                                                const unsigned int          i_vec_reg_number_1,
+                                                const unsigned int          i_vec_reg_number_2,
+                                                const unsigned int          i_mask_reg_number,
+                                                const unsigned int          i_use_zero_masking,
+                                                const unsigned char         i_sae_cntl );
 
 /**
- * Generates vmaskmovps/vmaskmovpd with displacements for loads and stores.
+ * Generates vmaskmovps/vmaskmovpd/vgathers with displacements for loads and stores.
  * Only works with i_vector_name='Y'
  */
 LIBXSMM_API_INTERN
 void libxsmm_x86_instruction_vec_mask_move( libxsmm_generated_code* io_generated_code,
-                                     const unsigned int      i_vmove_instr,
-                                     const unsigned int      i_gp_reg_base,
-                                     const unsigned int      i_gp_reg_idx,
-                                     const unsigned int      i_scale,
-                                     const int               i_displacement,
-                                     const char              i_vector_name,
-                                     const unsigned int      i_vec_reg_number_0,
-                                     const unsigned int      i_vec_reg_mask_0,
-                                     const unsigned int      i_is_store );
+                                            const unsigned int      i_vmove_instr,
+                                            const unsigned int      i_gp_reg_base,
+                                            const unsigned int      i_reg_idx,
+                                            const unsigned int      i_scale,
+                                            const int               i_displacement,
+                                            const char              i_vector_name,
+                                            const unsigned int      i_vec_reg_number_0,
+                                            const unsigned int      i_vec_reg_mask_0,
+                                            const unsigned int      i_is_store );
 
 /**
  * Generates vmovapd/vmovupd/vmovaps/vmovups/vmovsd/vmovss/vbroadcastsd/vbroastcastss/vmovddup instructions with displacements, explicit SIB addressing is not
@@ -128,7 +134,7 @@ void libxsmm_x86_instruction_vec_move( libxsmm_generated_code* io_generated_code
                                        const unsigned int      i_instruction_set,
                                        const unsigned int      i_vmove_instr,
                                        const unsigned int      i_gp_reg_base,
-                                       const unsigned int      i_gp_reg_idx,
+                                       const unsigned int      i_reg_idx,
                                        const unsigned int      i_scale,
                                        const int               i_displacement,
                                        const char              i_vector_name,
@@ -408,33 +414,18 @@ void libxsmm_x86_instruction_vec_shuffle_sse_reg( libxsmm_generated_code* io_gen
                                                   const unsigned int      i_vec_reg_number_1,
                                                   const unsigned int      i_shuffle_operand );
 
-/**
- * Generates shuffle instructions with 2 or 3 vector registers, memory operands are not supported as first operand
- *
- * @param io_generated_code pointer to the pointer of the generated code structure
- * @param i_instruction_set requested instruction set to encode
- * @param i_vmove_instr actual operation variant (gather/scatter and single/double)
- * @param i_vector_name the vector register name prefix (x,y or z)
- * @param i_gp_reg_number the register number (rax=0,rcx=1,rdx=2,rbx=3,rsp=4,rbp=5,rsi=6,rdi=7,r8=8,r9=9,r10=10,r11=11,r12=12,r13=13,r14=14,r15=15) of the base address register
- * @param i_vec_reg_idx the index vector registers (ymm0-15 AVX2) (zmm0-zmm32 AVX512)
- * @param i_scale the scaling of the indexes in i_vec_reg_idx
- * @param i_displacement the offset to the base address
- * @param i_vec_reg_number the destination(gather)/source(scatter) vec register (xmm/ymm: 0-15, zmm: 0-31)
- * @param i_mask_reg_number the mask register (xmm/ymm: 0-15 when using AVX2), (k1-k7 when using AVX512)
- * @param i_is_gather "true" generate a gather instruction, "false" generator a scatter instruction
- */
 LIBXSMM_API_INTERN
-void libxsmm_x86_instruction_vec_move_gathscat( libxsmm_generated_code* io_generated_code,
-                                                const unsigned int      i_instruction_set,
+void libxsmm_x86_instruction_vex_evex_mask_mov( libxsmm_generated_code* io_generated_code,
                                                 const unsigned int      i_vmove_instr,
-                                                const char              i_vector_name,
                                                 const unsigned int      i_gp_reg_base,
-                                                const unsigned int      i_vec_reg_idx,
+                                                const unsigned int      i_reg_idx,
                                                 const unsigned int      i_scale,
                                                 const int               i_displacement,
-                                                const unsigned int      i_vec_reg_number,
+                                                const char              i_vector_name,
+                                                const unsigned int      i_vec_reg_number_0,
+                                                const unsigned int      i_use_masking,
                                                 const unsigned int      i_mask_reg_number,
-                                                const unsigned int      i_is_gather );
+                                                const unsigned int      i_is_store );
 
 /* @TODO check if we can merge this alu_imm */
 /**
@@ -698,6 +689,12 @@ void libxsmm_x86_instruction_open_stream_mateltwise( libxsmm_generated_code*    
 LIBXSMM_API_INTERN
 void libxsmm_x86_instruction_close_stream_mateltwise( libxsmm_generated_code*       io_generated_code,
                                                       int                           skip_pop);
+
+LIBXSMM_API_INTERN
+void libxsmm_x86_instruction_open_stream_matequation( libxsmm_generated_code*                  io_generated_code,
+                                                     const unsigned int                        i_gp_struct_params );
+LIBXSMM_API_INTERN
+void libxsmm_x86_instruction_close_stream_matequation( libxsmm_generated_code*       io_generated_code );
 
 /**
  * @TODO: clean-up

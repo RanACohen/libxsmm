@@ -11,28 +11,36 @@ NUMA=-1
 
 KERNEL=$1
 
-if [ "" != "${GREP}" ] && [ "" != "${CUT}" ] && [ "" != "${SORT}" ] && [ "" != "${WC}" ] && [ -e /proc/cpuinfo ]; then
-  export NS=$(${GREP} "physical id" /proc/cpuinfo | ${SORT} -u | ${WC} -l | ${TR} -d " ")
-  export NC=$((NS*$(${GREP} -m1 "cpu cores" /proc/cpuinfo | ${TR} -d " " | ${CUT} -d: -f2)))
-  export NT=$(${GREP} "core id" /proc/cpuinfo | ${WC} -l | ${TR} -d " ")
-elif [ "" != "${UNAME}" ] && [ "" != "${CUT}" ] && [ "Darwin" = "$(${UNAME})" ]; then
-  export NS=$(sysctl hw.packages | ${CUT} -d: -f2 | tr -d " ")
-  export NC=$(sysctl hw.physicalcpu | ${CUT} -d: -f2 | tr -d " ")
-  export NT=$(sysctl hw.logicalcpu | ${CUT} -d: -f2 | tr -d " ")
-fi
-if [ "" != "${NC}" ] && [ "" != "${NT}" ]; then
-  export HT=$((NT/(NC)))
-else
-  export NS=1 NC=1 NT=1 HT=1
-fi
-if [ "" != "${GREP}" ] && [ "" != "${CUT}" ] && [ "" != "$(command -v numactl)" ]; then
-  export NN=$(numactl -H | ${GREP} available: | ${CUT} -d' ' -f2)
-else
-  export NN=${NS}
+if [ "${GREP}" ] && [ "${SORT}" ] && [ "${CUT}" ] && [ "${TR}" ] && [ "${WC}" ]; then
+  if [ "$(command -v lscpu)" ]; then
+    NS=$(lscpu | ${GREP} -m1 "Socket(s)" | ${TR} -d " " | ${CUT} -d: -f2)
+    if [ "" = "${NS}" ]; then NS=1; fi
+    NC=$((NS*$(lscpu | ${GREP} -m1 "Core(s) per socket" | ${TR} -d " " | ${CUT} -d: -f2)))
+    NT=$((NC*$(lscpu | ${GREP} -m1 "Thread(s) per core" | ${TR} -d " " | ${CUT} -d: -f2)))
+  elif [ -e /proc/cpuinfo ]; then
+    NS=$(${GREP} "physical id" /proc/cpuinfo | ${SORT} -u | ${WC} -l | ${TR} -d " ")
+    if [ "" = "${NS}" ] || [ "" = "${NS}" ]; then NS=1; fi
+    NC=$((NS*$(${GREP} -m1 "cpu cores" /proc/cpuinfo | ${TR} -d " " | ${CUT} -d: -f2)))
+    NT=$(${GREP} "core id" /proc/cpuinfo  | ${WC} -l | ${TR} -d " ")
+  elif [ "Darwin" = "$(uname)" ]; then
+    NS=$(sysctl hw.packages    | ${CUT} -d: -f2 | ${TR} -d " ")
+    NC=$(sysctl hw.physicalcpu | ${CUT} -d: -f2 | ${TR} -d " ")
+    NT=$(sysctl hw.logicalcpu  | ${CUT} -d: -f2 | ${TR} -d " ")
+  fi
+  if [ "${NC}" ] && [ "${NT}" ]; then
+    HT=$((NT/NC))
+  else
+    NS=1 NC=1 NT=1 HT=1
+  fi
+  if [ "$(command -v numactl)" ]; then
+    NN=$(numactl -H | ${GREP} "available:" | ${CUT} -d' ' -f2)
+  else
+    NN=${NS}
+  fi
 fi
 
-CPUFLAGS=$(if [ "" != "${GREP}" ] && [ "" != "${CUT}" ] && [ -e /proc/cpuinfo ]; then ${GREP} -m1 flags /proc/cpuinfo | ${CUT} -d: -f2-; fi)
-if [ "" != "${GREP}" ] && [ "" != "$(echo "${CPUFLAGS}" | ${GREP} -o avx512er)" ]; then
+CPUFLAGS=$(if [ "${GREP}" ] && [ "${CUT}" ] && [ -e /proc/cpuinfo ]; then ${GREP} -m1 flags /proc/cpuinfo | ${CUT} -d: -f2- || true; fi)
+if [ "${GREP}" ] && [ "$(echo "${CPUFLAGS}" | ${GREP} -o avx512er)" ]; then
   if [ "0" != "$((0>NUMA))" ] && [ "0" != "$((NS<NN))" ]; then
     NUMACTL="numactl --preferred=${NS} ${TOOL_COMMAND}"
   elif [ "0" != "$((0<=NUMA && NUMA<NN))" ]; then
@@ -167,6 +175,60 @@ elif [ "scale" = "${KERNEL}" ]; then
                     fi
                   fi
                 done
+              done
+            done
+          done
+        done
+      done
+    done
+  fi
+elif [ "unary" = "${KERNEL}" ]; then
+  if [[ $# == 11  || ( $# == 10 && $6 == 1 ) ]]; then
+    M=$2
+    N=$3
+    LD_IN=$4
+    LD_OUT=$5
+    OP=$6
+    PREC_IN=$7
+    if [ ${OP} != 0 ] ; then
+      PREC_COMP=$8
+      PREC_OUT=$9
+      BCAST_IN=$10
+      ${NUMACTL} ./eltwise_unary ${OP} ${BCAST_IN} ${PREC_IN} ${PREC_COMP} ${PREC_OUT}  ${M} ${N} ${LD_IN} ${LD_OUT}
+    else
+      PREC_OUT=$8
+      BITM=$9
+      ${NUMACTL} ./eltwise_unary_relu ${OP} ${BITM} ${PREC_IN} ${PREC_OUT} ${M} ${N} ${LD_IN} ${LD_OUT}
+    fi
+  else
+    for M in 11 16 19 32 34 64 69 2589; do
+      for N in 27 32 45 64 712 ; do
+        LD_LIST=( ${M} $(( M + 7 )) )
+        for LD_IN in "${LD_LIST[@]}" ; do
+          LD_OUT=${LD_IN}
+          for OP in 0 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            for PREC_IN in 2 4; do
+              for PREC_COMP in 4; do
+                for PREC_OUT in 2 4; do
+                  for BCAST_IN in 0 1 2 3; do
+                    ${NUMACTL} ./eltwise_unary ${OP} ${BCAST_IN} ${PREC_IN} ${PREC_COMP} ${PREC_OUT}  ${M} ${N} ${LD_IN} ${LD_OUT}
+                  done
+                done
+              done
+            done
+          done
+        done
+      done
+    done
+    for M in 11 16 19 32 34 64 69 2589; do
+      for N in 27 32 45 64 712 ; do
+        LD_IN=${M}
+        LD_OUT=${LD_IN}
+        for OP in 'F' 'B'; do
+          for PREC_IN in 2 4; do
+            for PREC_OUT in 2 4; do
+              for BITM in 0; do
+                ${NUMACTL} ./eltwise_unary_relu ${OP} ${BITM} ${PREC_IN} ${PREC_OUT} ${M} ${N} ${LD_IN} ${LD_OUT}
               done
             done
           done
